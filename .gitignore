@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+
+# Environment & local secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg-info/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Build artifacts / temp
+dist/
+build/
+.tmp/
+
+# Project data corpus
+data/
