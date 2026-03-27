@@ -1,13 +1,15 @@
+import logging
+
 from fastapi import FastAPI
-from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+
 from libs.observability.tracing import configure_tracing
 
-def setup_observability(app: FastAPI):
-    """
-    Configures and attaches OpenTelemetry to the FastAPI app
-    """
-    # 1. Configure the tracer (sends data to Jaeger/Datadog)
-    configure_tracing(service_name="rag-api-service")
+logger = logging.getLogger(__name__)
 
-    # 2. Auto-instrument FastAPI
-    FastAPIInstrumentor.instrument_app(app)
+
+def setup_observability(app: FastAPI) -> None:
+    """
+    JSON logs to stdout for CloudWatch (no OTLP / Jaeger on free tier).
+    """
+    configure_tracing(service_name="rag-api-service")
+    logger.info("Observability: structured logging to stdout enabled.")

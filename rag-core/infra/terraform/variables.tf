@@ -1,30 +1,38 @@
-
 variable "aws_region" {
-  description = "AWS region to deploy resources"
   type        = string
-  default     = "us-east-1" # N. Virginia has the best GPU availability
+  description = "AWS region for all resources"
+  default     = "us-east-1"
 }
 
 variable "environment" {
-  description = "Environment name (e.g., dev, prod)"
   type        = string
-  default     = "prod"
+  default     = "dev"
 }
 
-variable "cluster_name" {
-  description = "Name of the EKS Cluster"
+variable "project_name" {
   type        = string
-  default     = "rag-platform-cluster"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
-  type        = string
-  default     = "10.0.0.0/16" # Gives us 65,536 IPs
+  description = "Prefix for resource names"
+  default     = "rag-free"
 }
 
 variable "db_password" {
-  description = "Master password for Aurora Postgres"
   type        = string
-  sensitive   = true # Terraform will hide this in logs
+  description = "RDS master password (ragadmin)"
+  sensitive   = true
+}
+
+variable "alert_email" {
+  type        = string
+  description = "Email for AWS Budget notifications"
+}
+
+variable "your_ip_cidr" {
+  type        = string
+  description = "Your public IP with /32 for SSH and K3s API (e.g. 203.0.113.10/32)"
+}
+
+variable "rag_code_root" {
+  type        = string
+  description = "Path on EC2 where rag-core is synced (PYTHONPATH root for Ray ingestion jobs)"
+  default     = "/opt/rag-core"
 }

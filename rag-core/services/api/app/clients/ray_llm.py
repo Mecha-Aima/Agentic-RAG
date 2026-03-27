@@ -1,49 +1,63 @@
-import httpx
 import logging
+import os
+from typing import Dict, List, Optional
+
 import backoff
-from typing import List, Dict, Optional
+from groq import AsyncGroq
+
 from services.api.app.config import settings
 
 logger = logging.getLogger(__name__)
 
-class RayLLMClient:
+DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+class GroqLLMClient:
     """
-    Async Client with proper Connection Pooling
+    Async Groq client (replaces Ray Serve + vLLM on free tier).
     """
-    def __init__(self):
-        self.endpoint = settings.RAY_LLM_ENDPOINT 
-        # Client is initialized in startup_event
-        self.client: Optional[httpx.AsyncClient] = None
 
-    async def start(self):
-        """Called during App Startup"""
-        # Limits: prevent opening too many connections to Ray
-        limits = httpx.Limits(max_keepalive_connections=10, max_connections=30)
-        self.client = httpx.AsyncClient(
-            timeout=120.0, 
-            limits=limits
-        )
-        logger.info("Ray LLM Client initialized.")
+    def __init__(self) -> None:
+        self._client: Optional[AsyncGroq] = None
 
-    async def close(self):
-        """Called during App Shutdown"""
-        if self.client:
-            await self.client.aclose()
+    async def start(self) -> None:
+        self._client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+        logger.info("Groq LLM client initialized.")
 
-    @backoff.on_exception(backoff.expo, httpx.HTTPError, max_tries=3)
-    async def chat_completion(self, messages: List[Dict], temperature: float = 0.3, json_mode: bool = False) -> str:
-        if not self.client:
+    async def close(self) -> None:
+        self._client = None
+
+    @backoff.on_exception(backoff.expo, Exception, max_tries=3)
+    async def chat_completion(
+        self,
+        messages: List[Dict],
+        temperature: float = 0.3,
+        json_mode: bool = False,
+    ) -> str:
+        if not self._client:
             raise RuntimeError("Client not initialized. Call start() first.")
 
-        payload = {
+        kwargs = {
+            "model": DEFAULT_MODEL,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 2048
+            "max_tokens": 2048,
         }
-        
-        response = await self.client.post(self.endpoint, json=payload)
-        response.raise_for_status()
-        return response.json()["choices"][0]["message"]["content"]
+        # Groq: prefer prompt-level JSON instructions; response_format varies by model.
+        if json_mode:
+            kwargs["response_format"] = {"type": "json_object"}
 
-# Global Instance (Managed by Lifespan in main.py)
-llm_client = RayLLMClient()
+        try:
+            response = await self._client.chat.completions.create(**kwargs)
+        except Exception:
+            if json_mode and "response_format" in kwargs:
+                kwargs.pop("response_format", None)
+                response = await self._client.chat.completions.create(**kwargs)
+            else:
+                raise
+        return response.choices[0].message.content or ""
+
+
+# Backward-compatible alias for type hints / imports
+RayLLMClient = GroqLLMClient
+llm_client = GroqLLMClient()

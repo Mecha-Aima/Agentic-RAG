@@ -1,65 +1,53 @@
 # pipelines/ingestion/graph/extractor.py
 import json
-import httpx
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
+
+from groq import Groq
+
 from pipelines.ingestion.graph.schema import GraphSchema
+
+DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
 
 class GraphExtractor:
     """
-    Ray Actor Class for Graph Extraction.
-    Calls the internal LLM Service to extract entities.
+    Ray Data callable: graph extraction via Groq (CPU/free tier — no Ray LLM service).
     """
-    def __init__(self):
-        # Point to the internal Ray Serve LLM endpoint
-        # We use the internal K8s DNS name
-        self.llm_endpoint = "http://ray-serve-llm:8000/llm/chat"
-        self.client = httpx.Client(timeout=60.0) # Long timeout for reasoning
+
+    def __init__(self) -> None:
+        api_key = os.environ.get("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError("GROQ_API_KEY is required for graph extraction")
+        self._client = Groq(api_key=api_key)
 
     def __call__(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Process a batch of text chunks.
-        """
-        nodes_list = []
-        edges_list = []
-        
-        # Iterate through chunks in the batch
+        nodes_list: List = []
+        edges_list: List = []
+
         for text in batch["text"]:
             try:
-                # 1. Construct Prompt
                 prompt = f"""
                 {GraphSchema.get_system_prompt()}
-                
+
                 Input Text:
                 {text}
                 """
-                
-                # 2. Call LLM (Llama-3-70B)
-                response = self.client.post(
-                    self.llm_endpoint,
-                    json={
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.0, # Deterministic output
-                        "max_tokens": 1024
-                    }
+                response = self._client.chat.completions.create(
+                    model=DEFAULT_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0,
+                    max_tokens=1024,
                 )
-                response.raise_for_status()
-                
-                # 3. Parse JSON Output
-                # We assume the model returns valid JSON (guaranteed by constrained decoding or post-processing)
-                content = response.json()["choices"][0]["message"]["content"]
+                content = response.choices[0].message.content or ""
                 graph_data = json.loads(content)
-                
-                # 4. Append to results
                 nodes_list.append(graph_data.get("nodes", []))
                 edges_list.append(graph_data.get("edges", []))
-                
             except Exception as e:
-                # Log error but don't crash the pipeline; return empty graph for this chunk
                 print(f"Graph extraction failed for chunk: {e}")
                 nodes_list.append([])
                 edges_list.append([])
 
-        # Add graph data to the batch
         batch["graph_nodes"] = nodes_list
         batch["graph_edges"] = edges_list
         return batch

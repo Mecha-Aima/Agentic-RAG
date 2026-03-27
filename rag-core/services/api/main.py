@@ -1,10 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from services.api.app.clients.neo4j import neo4j_client
-from services.api.app.clients.ray_llm import llm_client
-from services.api.app.clients.ray_embed import embed_client
 from services.api.app.cache.redis import redis_client
-from services.api.app.routes import chat, upload, health
+from services.api.app.clients.neo4j import neo4j_client
+from services.api.app.clients.ray_embed import embed_client
+from services.api.app.clients.ray_llm import llm_client
+from services.api.app.observability import setup_observability
+from services.api.app.routes import chat, health, upload
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
 
 # FastAPI Application
 app = FastAPI(title="Enterprise RAG Platform", version="1.0.0", lifespan=lifespan)
+setup_observability(app)
 
 # Include Routes
 app.include_router(chat.router, prefix="/api/v1/chat", tags=["Chat"])

@@ -1,18 +1,79 @@
-# 1. IAM Policy for the Ingestion Pipeline (Ray Workers)
-resource "aws_iam_policy" "ingestion_policy" {
-  name        = "RAG_Ingestion_S3_Policy"
-  description = "Allows Ray workers to read/write documents bucket"
+# --- EC2 instance profile (S3, ECR pull, CloudWatch agent) ---
+resource "aws_iam_role" "ec2" {
+  name = "${var.project_name}-ec2-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+    }]
+  })
+}
 
+resource "aws_iam_role_policy_attachment" "ec2_s3" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_ecr_read" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+}
+
+resource "aws_iam_role_policy_attachment" "ec2_cw_agent" {
+  role       = aws_iam_role.ec2.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+resource "aws_iam_instance_profile" "ec2" {
+  name = "${var.project_name}-ec2-profile"
+  role = aws_iam_role.ec2.name
+}
+
+# --- Lambda execution role ---
+resource "aws_iam_role" "lambda" {
+  name = "${var.project_name}-lambda-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "lambda.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_vpc" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+resource "aws_iam_role_policy" "lambda_s3_read" {
+  name = "${var.project_name}-lambda-s3"
+  role = aws_iam_role.lambda.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents"
+        ]
+        Resource = "arn:aws:logs:*:*:*"
+      },
+      {
+        Effect = "Allow"
         Action = [
           "s3:GetObject",
-          "s3:PutObject",
           "s3:ListBucket"
         ]
-        Effect   = "Allow"
         Resource = [
           aws_s3_bucket.documents.arn,
           "${aws_s3_bucket.documents.arn}/*"
@@ -20,24 +81,4 @@ resource "aws_iam_policy" "ingestion_policy" {
       }
     ]
   })
-}
-
-# 2. IAM Role for Service Account (IRSA) - Binds K8s SA to AWS Role
-module "ingestion_irsa_role" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-account-eks"
-  version = "~> 5.0"
-
-  role_name = "rag-ingestion-role"
-  
-  # Trust relationship: Only the 'ray-worker' service account in 'default' ns can use this
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["default:ray-worker"]
-    }
-  }
-
-  role_policy_arns = {
-    policy = aws_iam_policy.ingestion_policy.arn
-  }
 }

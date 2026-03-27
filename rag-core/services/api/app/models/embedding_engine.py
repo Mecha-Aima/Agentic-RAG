@@ -1,38 +1,12 @@
-from ray import serve
-from sentence_transformers import SentenceTransformer
-import os
-import torch
+# CPU embeddings (no Ray Serve / GPU on free tier)
+from __future__ import annotations
 
-@serve.deployment(
-    num_replicas=1,
-    ray_actor_options={"num_gpus": 0.5} # Share GPU
-)
-class EmbedDeployment:
-    def __init__(self):
-        # Load model onto GPU
-        model_name = "BAAI/bge-m3"
-        self.model = SentenceTransformer(model_name, device="cuda")
-        
-        # Compile for speed (Optional, requires PyTorch 2.0+)
-        self.model = torch.compile(self.model)
+from typing import List, Sequence, Union
 
-    async def __call__(self, request):
-        body = await request.json()
-        texts = body.get("text")
-        task_type = body.get("task_type", "document")
-        
-        # BGE-M3 handles instructions differently, simplified here:
-        if isinstance(texts, str):
-            texts = [texts]
-            
-        # Encode
-        embeddings = self.model.encode(
-            texts, 
-            batch_size=32, 
-            normalize_embeddings=True
-        )
-        
-        # Convert numpy to list
-        return {"embeddings": embeddings.tolist()}
+from libs.embeddings.cpu import embed_texts
 
-app = EmbedDeployment.bind()
+
+def embed(texts: Union[str, Sequence[str]]) -> List[List[float]]:
+    if isinstance(texts, str):
+        return embed_texts([texts])
+    return embed_texts(list(texts))

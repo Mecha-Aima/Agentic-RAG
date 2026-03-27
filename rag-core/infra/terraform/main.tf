@@ -1,47 +1,52 @@
-
-# Define the Terraform configuration
 terraform {
-  # We require a recent version of Terraform for stability
   required_version = ">= 1.5.0"
 
-  # Define the providers we need to interact with AWS and Kubernetes
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0" # Use version 5.x for latest features
+      version = "~> 5.0"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 2.23"
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
     }
-    helm = {
-      source  = "hashicorp/helm"
-      version = "~> 2.11"
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
     }
-  }
-
-  # REMOTE STATE STORAGE (Industry Standard)
-  # This saves the infrastructure state to S3 so multiple engineers can work safely.
-  # Note: You must create this bucket manually once before running terraform init.
-  backend "s3" {
-    bucket         = "rag-platform-terraform-state-prod-001" # Unique bucket name
-    key            = "platform/terraform.tfstate"            # Path inside bucket
-    region         = "us-east-1"                             # AWS Region
-    encrypt        = true                                    # Encrypt state at rest
-    dynamodb_table = "terraform-state-lock"                  # Prevents concurrent writes
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }
 
-# Configure the AWS Provider
 provider "aws" {
   region = var.aws_region
 
-  # Apply default tags to ALL resources for cost tracking (FinOps)
   default_tags {
     tags = {
-      Project     = "Enterprise-RAG"
+      Project     = "agentic-rag-free-tier"
       Environment = var.environment
       ManagedBy   = "Terraform"
     }
+  }
+}
+
+# Email alert when actual spend exceeds threshold (free-tier safety net)
+resource "aws_budgets_budget" "rag_spend_alert" {
+  name              = "${var.project_name}-monthly-spend"
+  budget_type       = "COST"
+  limit_amount      = "1"
+  limit_unit        = "USD"
+  time_unit         = "MONTHLY"
+  time_period_start = "2025-01-01_00:00"
+
+  notification {
+    comparison_operator        = "GREATER_THAN"
+    threshold                  = 1
+    threshold_type             = "ABSOLUTE_VALUE"
+    notification_type          = "ACTUAL"
+    subscriber_email_addresses = [var.alert_email]
   }
 }

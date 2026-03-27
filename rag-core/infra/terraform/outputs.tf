@@ -1,26 +1,44 @@
-# infra/terraform/outputs.tf
-
-output "eks_cluster_name" {
-  description = "The name of the EKS cluster."
-  value       = module.eks.cluster_name
+output "ec2_public_ip" {
+  description = "SSH and public API access"
+  value       = aws_instance.rag.public_ip
 }
 
-output "eks_cluster_endpoint" {
-  description = "The endpoint for the EKS cluster's API server."
-  value       = module.eks.cluster_endpoint
+output "ec2_private_ip" {
+  description = "Ray dashboard / job API (Lambda uses this via env)"
+  value       = aws_instance.rag.private_ip
 }
 
-output "aurora_db_endpoint" {
-  description = "The writer endpoint for the Aurora PostgreSQL cluster."
-  value       = module.aurora.cluster_endpoint
+output "rds_endpoint" {
+  description = "RDS hostname (no port) for DATABASE_URL"
+  value       = aws_db_instance.postgres.address
 }
 
-output "redis_primary_endpoint" {
-  description = "The primary endpoint for the ElastiCache Redis cluster."
-  value       = aws_elasticache_replication_group.redis.primary_endpoint_address
+output "rds_port" {
+  value = aws_db_instance.postgres.port
 }
 
-output "s3_documents_bucket_name" {
-  description = "The name of the S3 bucket for document storage."
-  value       = aws_s3_bucket.documents.id
+output "s3_bucket_name" {
+  value = aws_s3_bucket.documents.bucket
+}
+
+output "ecr_api_repository_url" {
+  value = aws_ecr_repository.api.repository_url
+}
+
+output "ecr_sandbox_repository_url" {
+  value = aws_ecr_repository.sandbox.repository_url
+}
+
+output "private_key_pem" {
+  description = "Save with: terraform output -raw private_key_pem > ../../deploy/rag-ec2-key.pem && chmod 600 ../../deploy/rag-ec2-key.pem"
+  value       = tls_private_key.ssh.private_key_pem
+  sensitive   = true
+}
+
+output "ssh_key_name" {
+  value = aws_key_pair.rag.key_name
+}
+
+output "lambda_function_name" {
+  value = aws_lambda_function.ingestion_trigger.function_name
 }

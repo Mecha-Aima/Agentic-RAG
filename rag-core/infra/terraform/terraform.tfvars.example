@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars (never commit terraform.tfvars)
+#   cp terraform.tfvars.example terraform.tfvars
+
+aws_region    = "us-east-1"
+environment   = "dev"
+project_name  = "rag-free"
+
+db_password   = "ChangeMe_Strong_Password_1!"
+alert_email   = "you@example.com"
+your_ip_cidr  = "203.0.113.10/32" # curl -s ifconfig.me ; append /32
+
+# Path on EC2 where you rsync the rag-core folder contents (see user-data README_SYNC)
+# Example: rsync -avz ./rag-core/ ec2-user@EC2_IP:/opt/rag-core/
+rag_code_root = "/opt/rag-core"

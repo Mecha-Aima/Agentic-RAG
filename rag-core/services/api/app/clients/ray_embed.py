@@ -1,28 +1,32 @@
-import httpx
-from services.api.app.config import settings
+import asyncio
+import logging
+from typing import List
 
-class RayEmbedClient:
+from libs.embeddings.cpu import embed_texts
+
+logger = logging.getLogger(__name__)
+
+
+class CPUEmbedClient:
     """
-    Client for the Ray Serve Embedding Service
-    Uses HTTPX for async non-blocking HTTP calls
+    In-process CPU embeddings (replaces Ray Serve embed service).
     """
-    async def embed_query(self, text: str) -> list[float]:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                settings.RAY_EMBED_ENDPOINT,
-                json={"text": text, "task_type": "query"} # "query" instructs model to optimize for retrieval
-            )
-            response.raise_for_status()
-            return response.json()["embedding"]
 
-    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
-        """Used during ingestion"""
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            response = await client.post(
-                settings.RAY_EMBED_ENDPOINT,
-                json={"text": texts, "task_type": "document"}
-            )
-            response.raise_for_status()
-            return response.json()["embeddings"]
+    async def start(self) -> None:
+        # Warm model once on startup (loads SentenceTransformer)
+        await asyncio.to_thread(embed_texts, ["warmup"])
+        logger.info("CPU embed client initialized.")
 
-embed_client = RayEmbedClient()
+    async def close(self) -> None:
+        pass
+
+    async def embed_query(self, text: str) -> List[float]:
+        vectors = await asyncio.to_thread(embed_texts, [text])
+        return vectors[0]
+
+    async def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        return await asyncio.to_thread(embed_texts, texts)
+
+
+RayEmbedClient = CPUEmbedClient
+embed_client = CPUEmbedClient()

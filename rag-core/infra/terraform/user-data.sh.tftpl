@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euxo pipefail
+exec > >(tee /var/log/user-data.log) 2>&1
+
+# --- Swap (2 GiB) ---
+if [ ! -f /swapfile ]; then
+  dd if=/dev/zero of=/swapfile bs=128M count=16
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile swap swap defaults 0 0' >> /etc/fstab
+fi
+
+# --- Docker ---
+dnf install -y docker
+systemctl enable --now docker
+usermod -aG docker ec2-user || true
+
+# --- K3s (no Traefik; NodePort for API) ---
+if ! command -v k3s >/dev/null 2>&1; then
+  curl -sfL https://get.k3s.io | sh -s - --disable traefik --write-kubeconfig-mode 644
+fi
+mkdir -p /home/ec2-user/.kube
+cp /etc/rancher/k3s/k3s.yaml /home/ec2-user/.kube/config || true
+chown -R ec2-user:ec2-user /home/ec2-user/.kube || true
+grep -q KUBECONFIG /home/ec2-user/.bashrc || echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /home/ec2-user/.bashrc
+
+# --- Python + Ray ---
+dnf install -y python3.11 python3.11-pip
+python3.11 -m pip install --upgrade pip
+python3.11 -m pip install "ray[serve,data]==2.9.0"
+
+# --- Ray systemd ---
+cat > /etc/systemd/system/ray-head.service << 'EOSVC'
+[Unit]
+Description=Ray head (single-node CPU)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/bin/bash -lc 'exec $(command -v ray) start --head --node-ip-address=127.0.0.1 --port=6379 --object-store-memory=200000000 --num-cpus=1 --dashboard-host=0.0.0.0 --block'
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+EOSVC
+systemctl daemon-reload
+systemctl enable --now ray-head.service
+
+# --- CloudWatch agent (install only) ---
+dnf install -y amazon-cloudwatch-agent || true
+
+# --- Qdrant hostPath ---
+mkdir -p /data/qdrant
+chmod 777 /data/qdrant
+
+# --- Sync rag-core here (first deploy): see README_SYNC.txt ---
+mkdir -p ${rag_code_root}
+chown ec2-user:ec2-user ${rag_code_root}
+echo "rsync -avz ./rag-core/ ec2-user@THIS_HOST:${rag_code_root}/" > ${rag_code_root}/README_SYNC.txt
